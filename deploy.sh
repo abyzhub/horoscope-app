@@ -12,6 +12,18 @@ REGION="us-central1" # You can change this to your preferred region
 
 echo "Deploying to Project: $PROJECT_ID in Region: $REGION"
 
+# Try to load OPENAI_API_KEY from backend/.env if it exists
+if [ -f "backend/.env" ]; then
+  echo "Loading environment variables from backend/.env..."
+  export $(grep -v '^#' backend/.env | xargs)
+fi
+
+# Ask for OPENAI_API_KEY if not set
+if [ -z "$OPENAI_API_KEY" ]; then
+  echo "⚠️ OPENAI_API_KEY is not set. The LLM AI agent features will not work."
+  read -p "Enter your OPENAI_API_KEY now (or press Enter to skip): " OPENAI_API_KEY
+fi
+
 # 1. Provide permissions / enable services (Make sure you have run `gcloud auth login` first!)
 echo "Enabling required Cloud APIs..."
 gcloud services enable run.googleapis.com \
@@ -27,6 +39,7 @@ gcloud run deploy horoscope-backend \
     --region $REGION \
     --allow-unauthenticated \
     --project $PROJECT_ID \
+    --set-env-vars OPENAI_API_KEY=$OPENAI_API_KEY \
     --format="value(status.url)" > backend_url.txt
 
 BACKEND_URL=$(cat backend_url.txt)
