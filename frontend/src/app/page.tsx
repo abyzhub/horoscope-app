@@ -26,8 +26,8 @@ export default function Home() {
     setBirthId("");
 
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const response = await fetch(`${API_BASE}/generate-chart`, {
+      // Call the internal Next.js API route to bypass client-side ENV variable issues
+      const response = await fetch(`/api/generate-chart`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),

@@ -54,8 +54,8 @@ export default function ForecastPanel({ birthId }: ForecastPanelProps) {
         setIsLoading(true);
         setError("");
         try {
-            const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const res = await fetch(`${API_BASE}/analyze-period`, {
+            // Call the internal Next.js API route to bypass client-side ENV variable issues
+            const res = await fetch(`/api/analyze-period`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

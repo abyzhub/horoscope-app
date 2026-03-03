@@ -40,7 +40,7 @@ gcloud run deploy horoscope-frontend \
     --region $REGION \
     --allow-unauthenticated \
     --project $PROJECT_ID \
-    --set-env-vars NEXT_PUBLIC_API_URL=$BACKEND_URL \
+    --set-env-vars NEXT_PUBLIC_API_URL=$BACKEND_URL,API_URL=$BACKEND_URL \
     --format="value(status.url)" > frontend_url.txt
 
 FRONTEND_URL=$(cat frontend_url.txt)

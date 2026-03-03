@@ -50,8 +50,8 @@ export default function ChatPanel({ birthId }: ChatPanelProps) {
         setMessages((prev) => [...prev, userMsg]);
 
         try {
-            const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const res = await fetch(`${API_BASE}/ask`, {
+            // Call the internal Next.js API route to bypass client-side ENV variable issues
+            const res = await fetch(`/api/ask`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ birth_id: birthId, question }),
