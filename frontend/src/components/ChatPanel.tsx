@@ -50,7 +50,8 @@ export default function ChatPanel({ birthId }: ChatPanelProps) {
         setMessages((prev) => [...prev, userMsg]);
 
         try {
-            const res = await fetch("http://localhost:8000/ask", {
+            const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const res = await fetch(`${API_BASE}/ask`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ birth_id: birthId, question }),
@@ -100,8 +101,8 @@ export default function ChatPanel({ birthId }: ChatPanelProps) {
                     <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                         <div
                             className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === "user"
-                                    ? "bg-orange-600 text-white rounded-br-sm"
-                                    : "bg-slate-800 border border-slate-700 text-slate-200 rounded-bl-sm"
+                                ? "bg-orange-600 text-white rounded-br-sm"
+                                : "bg-slate-800 border border-slate-700 text-slate-200 rounded-bl-sm"
                                 }`}
                         >
                             {/* Main text */}

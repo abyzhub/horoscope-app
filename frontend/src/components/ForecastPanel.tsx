@@ -54,7 +54,8 @@ export default function ForecastPanel({ birthId }: ForecastPanelProps) {
         setIsLoading(true);
         setError("");
         try {
-            const res = await fetch("http://localhost:8000/analyze-period", {
+            const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const res = await fetch(`${API_BASE}/analyze-period`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -167,8 +168,8 @@ export default function ForecastPanel({ birthId }: ForecastPanelProps) {
                                 <div
                                     key={m.period}
                                     className={`bg-slate-900 rounded-lg border p-4 space-y-3 transition-colors ${m.is_high_significance
-                                            ? "border-red-600/60 shadow-md shadow-red-900/20"
-                                            : "border-slate-700"
+                                        ? "border-red-600/60 shadow-md shadow-red-900/20"
+                                        : "border-slate-700"
                                         }`}
                                 >
                                     <div className="flex justify-between items-start">

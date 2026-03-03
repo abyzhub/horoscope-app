@@ -26,7 +26,8 @@ export default function Home() {
     setBirthId("");
 
     try {
-      const response = await fetch("http://localhost:8000/generate-chart", {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const response = await fetch(`${API_BASE}/generate-chart`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -100,8 +101,8 @@ export default function Home() {
                   key={id}
                   onClick={() => setMainTab(id)}
                   className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${mainTab === id
-                      ? "bg-orange-600 text-white shadow-lg shadow-orange-900/30"
-                      : "text-slate-400 hover:text-slate-200"
+                    ? "bg-orange-600 text-white shadow-lg shadow-orange-900/30"
+                    : "text-slate-400 hover:text-slate-200"
                     }`}
                 >
                   <span>{icon}</span>
