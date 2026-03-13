@@ -7,8 +7,9 @@ import DashaTimeline from "@/components/DashaTimeline";
 import YogaList from "@/components/YogaList";
 import ForecastPanel from "@/components/ForecastPanel";
 import ChatPanel from "@/components/ChatPanel";
+import KarmicDashboard from "@/components/KarmicDashboard";
 
-type MainTab = "chart" | "forecast" | "ask";
+type MainTab = "chart" | "forecast" | "ask" | "karmic";
 type ChartTab = "D1" | "D9" | "D10";
 
 export default function Home() {
@@ -47,6 +48,7 @@ export default function Home() {
   const TAB_ITEMS: { id: MainTab; label: string; icon: string }[] = [
     { id: "chart", label: "Birth Chart", icon: "⬡" },
     { id: "forecast", label: "Forecast", icon: "📅" },
+    { id: "karmic", label: "Karmic Cycles", icon: "🧿" },
     { id: "ask", label: "Ask Agent", icon: "✦" },
   ];
 
@@ -150,13 +152,13 @@ export default function Home() {
                     <h3 className="text-lg font-semibold text-orange-400 mb-4">Planetary Positions</h3>
                     <div className="space-y-1 text-sm">
                       <div className="grid grid-cols-4 font-medium border-b border-slate-700 pb-2 mb-2 text-slate-400 text-xs">
-                        <span>Planet</span><span>Sign</span><span>Deg°</span><span>House</span>
+                        <span>Planet</span><span>Sign</span><span>Deg°</span><span>Nakshatra</span>
                       </div>
                       <div className="grid grid-cols-4 border-b border-slate-700/50 pb-1.5 text-xs">
                         <span className="text-orange-200">Ascendant</span>
                         <span>{chartData.ascendant.sign}</span>
                         <span>{chartData.ascendant.sign_degree.toFixed(1)}°</span>
-                        <span>1</span>
+                        <span className="text-slate-300">{chartData.ascendant.nakshatra} {chartData.ascendant.nakshatra_pada}</span>
                       </div>
                       {chartData.planets.map((p: any) => (
                         <div key={p.name} className="grid grid-cols-4 border-b border-slate-700/30 pb-1.5 last:border-0 text-xs">
@@ -165,7 +167,7 @@ export default function Home() {
                           </span>
                           <span>{p.sign}</span>
                           <span>{p.sign_degree.toFixed(1)}°</span>
-                          <span>{p.house}</span>
+                          <span className="text-slate-300">{p.nakshatra} {p.nakshatra_pada}</span>
                         </div>
                       ))}
                     </div>
@@ -180,6 +182,13 @@ export default function Home() {
               <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
                 <h3 className="text-xl font-semibold text-orange-400 mb-6">Temporal Forecast</h3>
                 <ForecastPanel birthId={birthId} />
+              </div>
+            )}
+
+            {/* ── Karmic Cycles Tab ── */}
+            {mainTab === "karmic" && (
+              <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                <KarmicDashboard birthId={birthId} />
               </div>
             )}
 

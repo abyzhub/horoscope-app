@@ -12,6 +12,7 @@ from typing import Dict, List, Any
 
 from app.engine.models import PlanetName, ZodiacSign
 from app.engine.yoga import EXALTATION_SIGNS, DEBILITATION_SIGNS, ZODIAC_LORDS
+from app.engine.ephemeris import NAKSHATRAS
 
 # Domain → relevant houses (BPHS)
 DOMAIN_HOUSES: Dict[str, List[int]] = {
@@ -21,6 +22,22 @@ DOMAIN_HOUSES: Dict[str, List[int]] = {
     "health":    [1, 6, 8, 12],
     "spiritual": [4, 9, 12],
     "general":   [1, 4, 7, 10],
+}
+
+# Tara Bala (Navatara) multipliers
+# 1=Janma (neutral/mixed), 2=Sampat (wealth), 3=Vipat (danger), 4=Kshema (well-being)
+# 5=Pratyari (obstacles), 6=Sadhaka (achievement), 7=Naidhana (destruction), 
+# 8=Mitra (friendly), 9=Ati-Mitra (intimate friend)
+TARA_BALA_SCORES = {
+    1: 0.0,   # Janma (neutral)
+    2: 1.5,   # Sampat (excellent)
+    3: -1.5,  # Vipat (bad)
+    4: 1.0,   # Kshema (good)
+    5: -1.0,  # Pratyari (bad)
+    6: 1.5,   # Sadhaka (excellent)
+    7: -2.0,  # Naidhana (terrible)
+    8: 1.0,   # Mitra (good)
+    9: 1.0,   # Ati-Mitra (good)
 }
 
 # Slow planets whose dasha / transit matters most
@@ -97,25 +114,50 @@ def _dasha_activation_score(monthly_data: Dict, domain: str) -> float:
     return round(min(score, 10.0), 2)
 
 
-def _transit_trigger_score(monthly_data: Dict, domain: str) -> float:
+def _transit_trigger_score(natal_payload: Dict, monthly_data: Dict, domain: str) -> float:
     """
     Score 0–10 for transit pressure on domain-relevant houses this month.
+    Includes Tara Bala (Navatara) scoring against the natal Moon Nakshatra.
     """
     domain_houses = set(DOMAIN_HOUSES.get(domain, DOMAIN_HOUSES["general"]))
     activated = set(monthly_data.get("activated_houses", []))
     transits: List[Dict] = monthly_data.get("major_transits", [])
+    
+    # Get Natal Moon Nakshatra
+    planets = natal_payload.get("planets", [])
+    moon_nak = ""
+    for p in planets:
+        if p.get("name") == PlanetName.MOON.value:
+            moon_nak = p.get("nakshatra", "")
+            break
+            
+    try:
+        moon_nak_idx = NAKSHATRAS.index(moon_nak)
+    except ValueError:
+        moon_nak_idx = 0
 
     overlap = len(activated & domain_houses)
     score = overlap * 1.5
 
     for t in transits:
+        # Tara Bala score for this transit
+        t_nak = t.get("nakshatra", "")
+        tara_score = 0.0
+        if t_nak in NAKSHATRAS:
+            t_nak_idx = NAKSHATRAS.index(t_nak)
+            # Distance from Moon nakshatra (inclusive 1-based index 1-9)
+            tara_idx = ((t_nak_idx - moon_nak_idx) % 27) % 9 + 1
+            tara_score = TARA_BALA_SCORES.get(tara_idx, 0.0)
+            
         if t.get("house") in domain_houses:
             score += 1.0
             if t.get("is_retrograde"):
                 score += 0.5
             score += len(t.get("conjunct_natal", [])) * 0.8
+            # Apply Tara Bala dynamically to transit trigger weight
+            score += tara_score
 
-    return round(min(score, 10.0), 2)
+    return round(min(max(score, 0.0), 10.0), 2)
 
 
 def _dominant_theme(domain: str, monthly_data: Dict) -> str:
@@ -136,7 +178,7 @@ def score_period(
     """
     natal_score   = _natal_promise_score(natal_payload, domain)
     dasha_score   = _dasha_activation_score(monthly_data, domain)
-    transit_score = _transit_trigger_score(monthly_data, domain)
+    transit_score = _transit_trigger_score(natal_payload, monthly_data, domain)
 
     major_event_index = (
         0.4 * natal_score

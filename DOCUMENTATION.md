@@ -29,7 +29,7 @@ All foundational math is handled by the backend's `engine/` module, ensuring sci
 - **Ayanamsa:** Fixed to Lahiri (Chitra Paksha) for traditional Vedic sidereal calculations (`swe.SIDM_LAHIRI`).
 - **Positions:** Calculates exact longitudinal positions for the Ascendant (Lagna) and 9 planets (Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu, and Ketu). Rahu and Ketu are computed as "True Nodes".
 - **House System:** Uses the Whole Sign House (Bhav) system starting relative to the Ascendant sign.
-- **Zodiac & Nakshatra Mapping:** Maps the 360° celestial span into 12 Zodiac signs (30° each) and 27 Nakshatras (13° 20' each) with 4 padas per Nakshatra.
+- **Zodiac & Nakshatra Mapping:** Maps the 360° celestial span into 12 Zodiac signs (30° each) and 27 Nakshatras (13° 20' each) with 4 padas per Nakshatra. Calculates the reigning Nakshatra Lord for all 27 stars.
 
 ### B. Divisional Charts (Varga) (`engine/divisional.py`)
 Mathematical extensions of the D1 chart:
@@ -44,6 +44,7 @@ Mathematical extensions of the D1 chart:
 ### D. Yoga Detection (`engine/yoga.py`)
 - Programmatically scans the calculated chart for classic Parashari Yogas (e.g., "Mutual Reception", "Pancha Mahapurusha Yogas" like Ruchaka, Bhadra, Hamsa, Malavya, and Shasha).
 - Determines if conditions are met across houses, sign rulerships, exaltations, and Kendra positions (houses 1, 4, 7, 10).
+- **Nakshatra Yogas:** Detects subtle but highly powerful Nakshatra-level alignments, including Nakshatra Parivartana (mutual exchange of Nakshatra Lords) and Nakshatra Raj Yogas.
 
 ---
 
@@ -51,12 +52,13 @@ Mathematical extensions of the D1 chart:
 
 The system generates month-by-month forward mathematical predictions using `temporal/period_analysis.py` and `scoring/scorer.py`.
 
-- **Transit Overlays:** Uses the Swiss Ephemeris to calculate where planets transit during a future month and overlays them against the Natal Chart (from Ascendant and Natal Moon).
+- **Transit Overlays:** Uses the Swiss Ephemeris to calculate where planets transit during a future month and overlays them against the Natal Chart (from Ascendant and Natal Moon). Returns both the transiting Sign and the exact transiting Nakshatra.
 - **Dasha Activations:** Looks up which Mahadasha and Antardasha are actively ruling during that month.
 - **Event Scoring:** Computes quantitative values (0 to 10) for Opportunity, Risk, and Overall Intensity:
   - It weights transits of major slow-moving planets (Jupiter, Saturn, Nodes) heavier than fast-moving inner planets.
   - Benefic transits through favorable houses (e.g., Jupiter in 11th) increase the Opportunity Score.
   - Malefic transits through unfavorable houses (e.g., Saturn in 8th) increase the Risk Score.
+  - **Tara Bala (Navatara) Scoring:** Dynamically overlays the 9-star cycle counting from the birth Moon's Nakshatra. Transit scores are boosted for favorable stars (*Sampat*, *Sadhaka*, *Mitra*) and penalized for unfavorable stars (*Vipat*, *Pratyari*, *Naidhana*).
 - **Domain Focus:** Scores are isolated based on domains (e.g., Career looks at 10th house, Marriage looks at 7th house).
 - **High Significance Windows:** Flags specific months where `intensity_index` passes a predefined threshold. 
 
@@ -78,18 +80,29 @@ The system explicitly prevents "hallucinations" common when prompting LLMs with 
 The System Prompt enforces a wise, compassionate persona while instilling strict safety guidelines:
 > "Never claim inevitability. Use language like 'tendency', 'theme', 'window of heightened activity'... Never make definitive health or legal predictions."
 
-The User Prompt builds a highly structured context document:
+The User Prompt builds a highly structured context document tracking exact placements over time:
 ```text
 === NATAL CHART SUMMARY ===
-Ascendant: Taurus
-Planets: Sun in Aries (House 12), Moon in Cancer (House 3)...
+Ascendant: Taurus (Rohini 2)
+Planets: Sun in Aries (House 12, Nakshatra: Ashwini)...
 
 === ACTIVE DASHAS BY MONTH ===
-Month: Jan 2026 | Active Dasha: Saturn-Moon | Intensity: 7.2/10
+  Jan 2026: Saturn-Moon | Intensity 7.2/10 | Houses: [1, 5, 9] | Transits: Jupiter in Gemini (Punarvasu)...
 ...
 ```
 
-The LLM integrates this data to craft comforting, analytical paragraphs—connecting the numeric `opportunity_index` with narrative astrological meaning (e.g., "Because you are entering a high opportunity window governed by Jupiter...").
+The LLM integrates this data to craft comforting, analytical paragraphs—connecting the numeric `opportunity_index` with narrative astrological meaning drawn from House, Sign, and Nakshatra themes.
+
+---
+
+## 5. Karmic Cycles Engine (`engine/karmic_cycles.py`, `temporal/karmic_timeline.py`)
+
+A deterministic engine built to track multi-year, long-term astrological cycles that represent major life maturity milestones. These calculations give the dashboard and LLM context regarding long-duration pressures or expansion.
+
+- **Sade Sati:** Detects the 7.5-year transit of Saturn traversing the 12th, 1st, and 2nd houses from the Natal Moon sign. Divides the tracking into Rising, Peak, and Setting phases.
+- **Saturn Return:** Deterministically calculates when transiting Saturn returns to the exact longitude of Natal Saturn (~29.5 year interval), marking periods of structural maturity and karmic reckoning.
+- **Jupiter Return:** Computes ~12 year intervals of Jupiter returning to its natal position, indicative of expansion and ideological growth.
+- **Timeline Merging:** Aggregates these distinct cycles into a structured chronological timeline array and tracking metrics to be ingested by the `/karmic-cycles` API and optionally injected into the Conversational LLM context prompt (`=== KARMIC CYCLES ===`).
 
 ### Technology Stack
 - **AI Backend API:** OpenAI GPT-4o (or configurable via `OPENAI_MODEL`).

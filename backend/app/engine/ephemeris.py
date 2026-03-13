@@ -18,6 +18,13 @@ NAKSHATRAS = [
     "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
 ]
 
+# The sequence rotates every 9 Nakshatras: Ketu, Venus, Sun, Moon, Mars, Rahu, Jupiter, Saturn, Mercury
+NAKSHATRA_LORDS = [
+    PlanetName.KETU, PlanetName.VENUS, PlanetName.SUN, PlanetName.MOON,
+    PlanetName.MARS, PlanetName.RAHU, PlanetName.JUPITER, PlanetName.SATURN,
+    PlanetName.MERCURY
+] * 3
+
 SWE_PLANETS = {
     PlanetName.SUN: swe.SUN,
     PlanetName.MOON: swe.MOON,

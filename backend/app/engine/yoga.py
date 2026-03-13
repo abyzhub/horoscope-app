@@ -1,5 +1,6 @@
 from typing import List, Dict
 from app.engine.models import PlanetPosition, PlanetName, ZodiacSign
+from app.engine.ephemeris import NAKSHATRAS, NAKSHATRA_LORDS
 
 # House lords mapped by sign
 ZODIAC_LORDS = {
@@ -112,10 +113,56 @@ def detect_yogas(ascendant: PlanetPosition, planets: List[PlanetPosition]) -> Li
                     "description": f"{p.name.value} in great dignity in a Kendra. Creates a powerful prominent personality."
                 })
                 
-    # 5. Vipareeta Raja Yoga (Simplified: 6,8,12 Lords in 6,8,12)
-    # This requires full house lord logic
-    # Find signs in 6, 8, 12 from ascendant
-    # (asc sign + house - 1) % 12
-    # But for now we omit the full logic check to save space, or just keep it simple.
+    # 6. Nakshatra Parivartana (Exchange of Nakshatra Lords)
+    for p1 in planets:
+        # Skip Ascendant or nodes if we strictly want 7 classic planets, but nodes are valid
+        if p1.name == PlanetName.ASCENDANT:
+            continue
+            
+        try:
+            p1_nak_idx = NAKSHATRAS.index(p1.nakshatra)
+            p1_nak_lord = NAKSHATRA_LORDS[p1_nak_idx]
+        except ValueError:
+            continue
+            
+        for p2 in planets:
+            if p1 == p2 or p2.name == PlanetName.ASCENDANT:
+                continue
+                
+            try:
+                p2_nak_idx = NAKSHATRAS.index(p2.nakshatra)
+                p2_nak_lord = NAKSHATRA_LORDS[p2_nak_idx]
+            except ValueError:
+                continue
+                
+            # Mutual exchange of Nakshatras 
+            # p1 sits in p2's nakshatra AND p2 sits in p1's nakshatra
+            if p1_nak_lord == p2.name and p2_nak_lord == p1.name:
+                # Add only once (p1 name < p2 name to avoid duplicates)
+                if p1.name.value < p2.name.value:
+                    yogas_detected.append({
+                        "name": f"Nakshatra Parivartana: {p1.name.value} & {p2.name.value}",
+                        "description": f"Powerful inner resonance: {p1.name.value} and {p2.name.value} have exchanged Nakshatras, deeply linking their significations."
+                    })
+                    
+    # 7. Nakshatra Raj Yoga (Kendra Lord in Trikona Lord's Nakshatra)
+    for p in planets:
+        if p.name == PlanetName.ASCENDANT:
+            continue
+        try:
+            nak_idx = NAKSHATRAS.index(p.nakshatra)
+            nak_lord_name = NAKSHATRA_LORDS[nak_idx]
+        except ValueError:
+            continue
+            
+        nak_lord_planet = p_by_name.get(nak_lord_name)
+        if not nak_lord_planet:
+            continue
+            
+        if is_kendra(p.house) and is_trikona(nak_lord_planet.house):
+            yogas_detected.append({
+                "name": f"Nakshatra Raj Yoga",
+                "description": f"{p.name.value} (in a Kendra) is seated in the Nakshatra of {nak_lord_name.value} (in a Trikona). Elevates status and destiny."
+            })
     
     return yogas_detected

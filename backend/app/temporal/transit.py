@@ -12,6 +12,7 @@ from typing import List, Dict, Any
 from app.engine.ephemeris import (
     get_julian_day,
     get_sign_info,
+    get_nakshatra_info,
     ZODIAC_SIGNS,
     SWE_PLANETS,
 )
@@ -39,22 +40,35 @@ def _get_transit_positions(utc_dt: datetime) -> Dict[PlanetName, Dict[str, Any]]
     for p_name in TRANSIT_PLANETS:
         swe_id = SWE_PLANETS[p_name]
         res, _ = swe.calc_ut(jd, swe_id, flags)
-        sign, deg = get_sign_info(res[0])
+        long_deg = res[0]
+        sign, deg = get_sign_info(long_deg)
+        nak, pada = get_nakshatra_info(long_deg)
         positions[p_name] = {
             "sign": sign.value,
             "sign_index": ZODIAC_SIGNS.index(sign),
             "degree": round(deg, 2),
             "is_retrograde": res[3] < 0,
+            "nakshatra": nak,
+            "nakshatra_pada": pada,
         }
 
     # Ketu = Rahu + 180°
     rahu_idx = positions[PlanetName.RAHU]["sign_index"]
     ketu_sign_idx = (rahu_idx + 6) % 12
+    # Assume Rahu/Ketu are directly opposite in longitude too
+    swe_rahu_id = SWE_PLANETS[PlanetName.RAHU]
+    r_res, _ = swe.calc_ut(jd, swe_rahu_id, flags)
+    r_long = r_res[0]
+    k_long = (r_long + 180.0) % 360.0
+    k_nak, k_pada = get_nakshatra_info(k_long)
+
     positions[PlanetName.KETU] = {
         "sign": ZODIAC_SIGNS[ketu_sign_idx].value,
         "sign_index": ketu_sign_idx,
         "degree": positions[PlanetName.RAHU]["degree"],
         "is_retrograde": positions[PlanetName.RAHU]["is_retrograde"],
+        "nakshatra": k_nak,
+        "nakshatra_pada": k_pada,
     }
 
     return positions
@@ -132,6 +146,8 @@ def compute_transits(
             "degree": t_data["degree"],
             "house": house,
             "is_retrograde": t_data["is_retrograde"],
+            "nakshatra": t_data["nakshatra"],
+            "nakshatra_pada": t_data["nakshatra_pada"],
             "conjunct_natal": conjunct_natal,
             "opposite_natal": opposites,
             "special_aspect_houses": special_aspect_houses,

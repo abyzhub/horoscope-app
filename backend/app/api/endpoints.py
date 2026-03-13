@@ -14,6 +14,8 @@ from app.core.chart_cache import save_chart, load_chart
 from app.temporal.period_analysis import analyze_period
 from app.temporal.agent import ask_agent
 from app.scoring.scorer import score_period
+from app.engine.karmic_cycles import calculate_all_karmic_cycles
+from app.temporal.karmic_timeline import build_karmic_dashboard
 
 router = APIRouter()
 
@@ -35,6 +37,9 @@ class PeriodRequest(BaseModel):
 class AskRequest(BaseModel):
     birth_id: str
     question: str
+
+class KarmicRequest(BaseModel):
+    birth_id: str
 
 # ─── /generate-chart ─────────────────────────────────────────────────────────
 
@@ -145,3 +150,23 @@ def ask_endpoint(req: AskRequest):
 
     result = ask_agent(question=req.question, natal_payload=natal)
     return result
+
+
+# ─── /karmic-cycles ──────────────────────────────────────────────────────────
+
+@router.post("/karmic-cycles")
+def karmic_cycles_endpoint(req: KarmicRequest):
+    """
+    Returns the aggregated karmic dashboard data for a birth_id.
+    """
+    natal = load_chart(req.birth_id)
+    if not natal:
+        raise HTTPException(status_code=404, detail="Chart not found. Please generate chart first.")
+        
+    all_cycles = calculate_all_karmic_cycles(natal)
+    now = datetime.now()
+    
+    dashboard_data = build_karmic_dashboard(all_cycles, now.date())
+    dashboard_data["birth_id"] = req.birth_id
+    
+    return dashboard_data

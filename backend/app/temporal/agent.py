@@ -7,66 +7,69 @@ It NEVER calculates planetary math itself.
 import re
 from datetime import datetime, date, timezone
 from typing import Dict, Any, Tuple, List
-
+from enum import Enum
+from pydantic import BaseModel
 from openai import OpenAI
 
 from app.core.config import OPENAI_API_KEY, OPENAI_MODEL
 from app.temporal.period_analysis import analyze_period
 from app.scoring.scorer import score_period, DOMAIN_HOUSES
+from app.engine.karmic_cycles import calculate_all_karmic_cycles
+from app.temporal.karmic_timeline import build_karmic_dashboard, get_current_cycle_status
 
 # ─── Intent Detection ────────────────────────────────────────────────────────
 
-DOMAIN_KEYWORDS: Dict[str, List[str]] = {
-    "career":    ["career", "job", "work", "profession", "business", "promotion", "success"],
-    "marriage":  ["marriage", "relationship", "partner", "spouse", "love", "wedding"],
-    "finance":   ["money", "finance", "wealth", "income", "investment", "debt"],
-    "health":    ["health", "sickness", "illness", "disease", "body", "hospital"],
-    "spiritual": ["spiritual", "moksha", "meditation", "karma", "dharma"],
-}
+class PrimaryDomain(str, Enum):
+    CAREER = "career"
+    MARRIAGE = "marriage"
+    FINANCE = "finance"
+    HEALTH = "health"
+    SPIRITUAL = "spiritual"
+    GENERAL = "general"
 
+class UserIntent(BaseModel):
+    primary_domain: PrimaryDomain
+    timeframe_start: str # ISO Date string (YYYY-MM-DD)
+    timeframe_end: str # ISO Date string (YYYY-MM-DD)
+    requires_transit_math: bool
 
-def detect_intent(question: str) -> str:
-    q_lower = question.lower()
-    for domain, keywords in DOMAIN_KEYWORDS.items():
-        if any(kw in q_lower for kw in keywords):
-            return domain
-    return "general"
-
-
-def extract_timeframe(question: str) -> Tuple[date, date]:
+def extract_intent(question: str, current_date: date) -> UserIntent:
     """
-    Extract a date range from natural language.
-    Defaults to the current calendar year if nothing found.
+    Use an LLM (fast, lightweight model) to parse the natural language query 
+    and extract structured date boundaries and primary domain without doing math.
     """
-    now = datetime.now(timezone.utc)
-    q_lower = question.lower()
-
-    # "next year" / "next 12 months"
-    if "next year" in q_lower:
-        start = date(now.year + 1, 1, 1)
-        return start, date(now.year + 1, 12, 31)
-
-    # "this year" / "current year"
-    if "this year" in q_lower or "current year" in q_lower:
-        return date(now.year, 1, 1), date(now.year, 12, 31)
-
-    # "next 6 months"
-    m = re.search(r"next (\d+) months?", q_lower)
-    if m:
-        months = int(m.group(1))
+    if not OPENAI_API_KEY or OPENAI_API_KEY.startswith("sk-your"):
+        # Fallback if no API key is provided
         from dateutil.relativedelta import relativedelta
-        end = now.date() + relativedelta(months=months)
-        return now.date(), end
+        return UserIntent(
+            primary_domain=PrimaryDomain.GENERAL,
+            timeframe_start=current_date.isoformat(),
+            timeframe_end=(current_date + relativedelta(months=12)).isoformat(),
+            requires_transit_math=True
+        )
 
-    # "in 2027" or "year 2027"
-    m = re.search(r"\b(20\d{2})\b", question)
-    if m:
-        yr = int(m.group(1))
-        return date(yr, 1, 1), date(yr, 12, 31)
+    system_prompt = (
+        "You are an intent extractor for an astrology application. "
+        "Do not answer the user's question. Calculate the start and end dates relative to the `current_date` provided. "
+        "Map their question to the closest `primary_domain`. "
+        "If they don't provide a specific timeframe, default to the next 12 months starting from `current_date`. "
+        "Return dates in 'YYYY-MM-DD' ISO format. "
+        "Set `requires_transit_math` to true if the question asks about a future/predictive topic or a timeframe. "
+        "Set it to false ONLY if they are asking purely about static/natal chart interpretations (e.g. 'What is my Jupiter placement?')."
+    )
 
-    # Default: next 12 months from today
-    from dateutil.relativedelta import relativedelta
-    return now.date(), (now.date() + relativedelta(months=12))
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    chat = client.beta.chat.completions.parse(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"current_date: {current_date.isoformat()}\nquestion: {question}"},
+        ],
+        response_format=UserIntent,
+        temperature=0.0
+    )
+    
+    return chat.choices[0].message.parsed
 
 
 # ─── LLM Prompt Builder ───────────────────────────────────────────────────────
@@ -97,6 +100,7 @@ def _build_user_prompt(
     natal_summary: Dict,
     monthly_analyses: List[Dict],
     scores: List[Dict],
+    karmic_status: Dict[str, Any] = None,
 ) -> str:
     # Find highlighted months
     highlights = [
@@ -108,11 +112,34 @@ def _build_user_prompt(
         f"Detected Domain: {domain}",
         "",
         "=== NATAL CHART SUMMARY ===",
-        f"Ascendant: {natal_summary.get('ascendant', {}).get('sign', 'Unknown')}",
+        f"Ascendant: {natal_summary.get('ascendant', {}).get('sign', 'Unknown')} "
+        f"({natal_summary.get('ascendant', {}).get('nakshatra', 'Unknown')})",
+        "",
         "Planets: " + ", ".join(
-            f"{p['name']} in {p['sign']} (House {p['house']})"
+            f"{p['name']} in {p['sign']} (House {p['house']}, Nakshatra: {p.get('nakshatra', 'Unknown')})"
             for p in natal_summary.get("planets", [])
         ),
+        "",
+        "=== KARMIC CYCLES ==="
+    ]
+    
+    if karmic_status:
+        active = karmic_status.get("active_cycles", [])
+        upcoming = karmic_status.get("upcoming_cycles", [])
+        if active:
+            lines.append("Active right now:")
+            for a in active:
+                lines.append(f"  - {a['cycle']} (Phase/Num: {a.get('phase') or a.get('number')})")
+        if upcoming:
+            lines.append("Upcoming soon:")
+            for u in upcoming:
+                lines.append(f"  - {u['cycle']} in {u.get('start') or u.get('year')}")
+        if not active and not upcoming:
+            lines.append("  No major active or upcoming karmic cycles tracked.")
+    else:
+        lines.append("  Not requested/checked purely static.")
+        
+    lines += [
         "",
         "=== PERIOD BEING ANALYSED ===",
         f"From {monthly_analyses[0]['period']} to {monthly_analyses[-1]['period']} ({len(monthly_analyses)} months)",
@@ -120,10 +147,18 @@ def _build_user_prompt(
         "=== ACTIVE DASHAS BY MONTH ===",
     ]
     for m in monthly_analyses[:12]:  # Cap to 12 months for token limit
+        # Get transit planets and their nakshatras
+        transits = []
+        for t in m.get("major_transits", []):
+            nak = t.get("nakshatra")
+            t_str = f"{t['planet']} in {t['sign']} ({nak})" if nak else f"{t['planet']} in {t['sign']}"
+            transits.append(t_str)
+            
         lines.append(
             f"  {m['period']}: {m['active_dasha']} "
             f"| Intensity {m['intensity_index']}/10 "
-            f"| Houses: {m['activated_houses']}"
+            f"| Houses: {m['activated_houses']} "
+            f"| Transits: {', '.join(transits)}"
         )
 
     lines.append("")
@@ -156,6 +191,7 @@ def _build_user_prompt(
         "End with 1-2 actionable suggestions for this period.",
     ]
 
+    print("\n".join(lines))
     return "\n".join(lines)
 
 
@@ -167,31 +203,42 @@ def ask_agent(
 ) -> Dict[str, Any]:
     """
     Full agent pipeline:
-    1. Intent detection
-    2. Timeframe extraction
-    3. Period analysis
-    4. Event scoring
-    5. LLM interpretation
+    1. LLM Intent detection (domain, timeframe)
+    2. Optional Period analysis
+    3. Optional Event scoring
+    4. Final LLM interpretation
     """
-    domain = detect_intent(question)
-    start_date, end_date = extract_timeframe(question)
+    now = datetime.now(timezone.utc).date()
+    intent = extract_intent(question, now)
+    
+    domain = intent.primary_domain.value
+    start_date = date.fromisoformat(intent.timeframe_start)
+    end_date = date.fromisoformat(intent.timeframe_end)
 
-    # Step 3: Temporal period analysis
-    monthly_analyses = analyze_period(natal_payload, start_date, end_date)
-
-    # Step 4: Score each month
+    monthly_analyses = []
     scored_months = []
-    for m in monthly_analyses:
-        score = score_period(natal_payload, m, domain)
-        score["period"] = m["period"]
-        scored_months.append(score)
+    
+    if intent.requires_transit_math:
+        # Step 2 & 3: Temporal logic
+        monthly_analyses = analyze_period(natal_payload, start_date, end_date)
+        for m in monthly_analyses:
+            score = score_period(natal_payload, m, domain)
+            score["period"] = m["period"]
+            scored_months.append(score)
+
+    # Step 4: Karmic Context for LLM
+    karmic_status = None
+    if intent.requires_transit_math:
+        all_cycles = calculate_all_karmic_cycles(natal_payload)
+        dash_data = build_karmic_dashboard(all_cycles, now)
+        karmic_status = get_current_cycle_status(dash_data, now)
 
     # Step 5: LLM call (skip if no API key configured)
     llm_response = ""
     if OPENAI_API_KEY and not OPENAI_API_KEY.startswith("sk-your"):
         client = OpenAI(api_key=OPENAI_API_KEY)
         user_prompt = _build_user_prompt(
-            question, domain, natal_payload, monthly_analyses, scored_months
+            question, domain, natal_payload, monthly_analyses, scored_months, karmic_status
         )
         chat = client.chat.completions.create(
             model=OPENAI_MODEL,
@@ -212,11 +259,11 @@ def ask_agent(
     return {
         "question": question,
         "domain": domain,
-        "period": f"{start_date.strftime('%B %Y')} – {end_date.strftime('%B %Y')}",
+        "period": f"{start_date.strftime('%B %Y')} – {end_date.strftime('%B %Y')}" if intent.requires_transit_math else "Static Natal",
         "llm_interpretation": llm_response,
         "monthly_breakdown": monthly_analyses,
         "event_scores": scored_months,
         "high_significance_windows": [
             m for m in monthly_analyses if m.get("is_high_significance")
-        ],
+        ] if monthly_analyses else [],
     }
